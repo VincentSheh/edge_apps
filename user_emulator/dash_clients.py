@@ -16,48 +16,54 @@ url_list = ["http://192.168.50.12:3000/samples/dash-if-reference-player/index_co
             "http://192.168.50.12:3000/samples/dash-if-reference-player/index_copy.html?mpd=http%3A%2F%2F192.168.50.12%3A8010%2Fnomor%2F3.mpd&autoLoad=true&muted=true+&debug.logLevel=5&streaming.capabilities.supportedEssentialProperties.0.schemeIdUri=urn%3Advb%3Adash%3Afontdownload%3A2014&streaming.capabilities.supportedEssentialProperties.1.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AColourPrimaries&streaming.capabilities.supportedEssentialProperties.2.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AMatrixCoefficients&streaming.capabilities.supportedEssentialProperties.3.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3ATransferCharacteristics&streaming.capabilities.supportedEssentialProperties.4.schemeIdUri=http%3A%2F%2Fdashif.org%2Fthumbnail_tile&streaming.capabilities.supportedEssentialProperties.5.schemeIdUri=http%3A%2F%2Fdashif.org%2Fguidelines%2Fthumbnail_tile&streaming.delay.liveDelayFragmentCount=NaN&streaming.delay.liveDelay=NaN&streaming.buffer.initialBufferLevel=NaN&streaming.liveCatchup.maxDrift=NaN&streaming.liveCatchup.playbackRate.min=NaN&streaming.liveCatchup.playbackRate.max=NaN",
             "http://192.168.50.12:3000/samples/dash-if-reference-player/index_copy.html?mpd=http%3A%2F%2F192.168.50.12%3A8010%2Fnomor%2F5.mpd&autoLoad=true&muted=true+&debug.logLevel=5&streaming.capabilities.supportedEssentialProperties.0.schemeIdUri=urn%3Advb%3Adash%3Afontdownload%3A2014&streaming.capabilities.supportedEssentialProperties.1.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AColourPrimaries&streaming.capabilities.supportedEssentialProperties.2.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AMatrixCoefficients&streaming.capabilities.supportedEssentialProperties.3.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3ATransferCharacteristics&streaming.capabilities.supportedEssentialProperties.4.schemeIdUri=http%3A%2F%2Fdashif.org%2Fthumbnail_tile&streaming.capabilities.supportedEssentialProperties.5.schemeIdUri=http%3A%2F%2Fdashif.org%2Fguidelines%2Fthumbnail_tile&streaming.delay.liveDelayFragmentCount=NaN&streaming.delay.liveDelay=NaN&streaming.buffer.initialBufferLevel=NaN&streaming.liveCatchup.maxDrift=NaN&streaming.liveCatchup.playbackRate.min=NaN&streaming.liveCatchup.playbackRate.max=NaN",]
 
+def write_or_append_csv(file_path,df):
+    if not os.path.isfile(file_path):
+        df.to_csv(file_path, index=False)
+    else:
+        df.to_csv(file_path, mode='a', header=False, index=False)    
+    return df  
 def calculate_qoe(initial_startup_delay, bitrate, buffer_length, stall_count, stall_duration, client_id):
+    
     if not (bitrate and buffer_length and stall_count and stall_duration):
         return None
+    sampling_rate = 2.0
+    # Calculate the Video Resolution 
+    bitrate_arr = np.array(bitrate)[:,1]
+    integrated_resolution = np.trapz(bitrate_arr, dx = sampling_rate)
+    video_resolution = 1/(len(bitrate_arr)*sampling_rate)*integrated_resolution
+    # Calculate Video Variation Rate
+    bitrate_diff_arr = np.square(np.diff(bitrate_arr))
+    integrated_variation_rate = np.trapz(bitrate_diff_arr, dx = sampling_rate)
+    variation_rate = 1/(len(bitrate_diff_arr)*sampling_rate)*integrated_variation_rate
+    # Get Initial Startup Delay
+    initial_startup_delay = initial_startup_delay
+    # Calculate Video Stalling
+    stall_duration_arr = np.array(stall_duration)[:,1]
+    stall_diff_arr = np.diff(stall_duration_arr) if len(stall_duration_arr) > 1 else stall_duration
+    total_stall_duration = np.sum(stall_diff_arr) 
     
-    qoe_scores = []
-    w_startup_delay = 0.2
-    w_bitrate = 0.3
-    w_buffer_length = 0.2
-    w_stall_count = 0.15
-    w_stall_duration = 0.15
-
-    max_startup_delay = 2.0
-    max_bitrate = 2000.0
-    max_buffer_length = 80.0
-    max_stall_count = 3
-    max_stall_duration = 10000.0
-
-    for i in range(len(bitrate)):
-        time, current_bitrate = bitrate[i]
-        _, current_buffer_length = buffer_length[i]
-        _, current_stall_count = stall_count[i]
-        _, current_stall_duration = stall_duration[i]
-
-        norm_startup_delay = 1 - (initial_startup_delay / max_startup_delay)
-        norm_bitrate = current_bitrate / max_bitrate
-        norm_buffer_length = current_buffer_length / max_buffer_length
-        norm_stall_count = 1 - (current_stall_count / max_stall_count)
-        norm_stall_duration = 1 - (current_stall_duration / max_stall_duration)
-
-        qoe_score = (w_startup_delay * norm_startup_delay +
-                     w_bitrate * norm_bitrate +
-                     w_buffer_length * norm_buffer_length +
-                     w_stall_count * norm_stall_count +
-                     w_stall_duration * norm_stall_duration)
-
-        qoe_scores.append((int(time), qoe_score))
+    # TODO: Normalize using Standard Normalization, when collecting data, record it in a csv and then get the mean and variance
+    qoe = video_resolution - variation_rate - initial_startup_delay - total_stall_duration
     
-    print(f"Client ID: {client_id}")
-    for time, score in qoe_scores:
-        print(f"Time: {int(time)}, QoE Score: {score}")
-        
-    qoe_df = pd.DataFrame(qoe_scores, columns=["Time", f"Client_{client_id}_QoE"])
+    # TODO: Decide on the weight
+    w_resolution = 0.2
+    w_variation = 0.15
+    w_startup_delay = 0.4
+    w_stalling = 0.25    
+    # Store the results in a DataFrame for easy output
+    qoe_df = pd.DataFrame({
+        'client_id': [client_id],
+        'video_resolution': [video_resolution],
+        'variation_rate': [variation_rate],
+        'startup_delay': [initial_startup_delay],
+        'total_stall_duration': [total_stall_duration],
+        'time':[int(bitrate[-1][0])],
+        f'qoe_{client_id}': [qoe]
+    })    
+    
+    # ? Record QoE Data
+    file_path = 'qoe_data.csv'
+    write_or_append_csv(file_path, qoe_df)
     return qoe_df
 
   # TODO Create Convert to Pandas CSV
@@ -65,9 +71,12 @@ def calculate_qoe(initial_startup_delay, bitrate, buffer_length, stall_count, st
 chrome_driver_path = '/opt/homebrew/Caskroom/chromedriver/127.0.6533.88/chromedriver-mac-arm64/chromedriver'
 def emulate_client(client_id,results):
     # Specify the path to the ChromeDriver
+    # initial_sleep_time = np.random.uniform(1,2)
+    # watch_time = np.random.uniform(10,20)
     initial_sleep_time = np.random.uniform(5,20)
     watch_time = np.random.uniform(40,200)
     video_number = np.random.choice(5)
+    print(video_number)
     # ? Random User Arrival
     time.sleep(initial_sleep_time)
     # Set up Chrome options
@@ -122,7 +131,7 @@ def emulate_client(client_id,results):
     qoe_df = calculate_qoe(initial_startup_delay, bitrate, buffer, stall_count, stall_duration, client_id)
     
     driver.quit()
-    results[client_id] = qoe_df
+    results[client_id] = qoe_df[f"qoe_{client_id}"]
 
 def main():
   while True:
@@ -142,13 +151,15 @@ def main():
     combined_df = pd.DataFrame()
     for i in range(num_clients):
         client_df = results[i].copy()
+        print(client_df)
         if combined_df.empty:
             combined_df = client_df
         else:
-            combined_df = pd.merge(combined_df, client_df, on="Time", how="outer")
-
+            # combined_df = pd.merge(combined_df, client_df, on="Time", how="outer")
+            combined_df = pd.concat([combined_df, client_df], axis=1)
+            print(combined_df)
     # Save the combined DataFrame to a CSV file
-    # combined_df.to_csv("QoE_results_with_protection_bonesi.csv", index=False)
+    write_or_append_csv("QoE_test.csv", combined_df)
     print("All QoE scores written to QoE_results.csv")
 
   # if os.path.exists(file_name):
@@ -166,3 +177,48 @@ def main():
     
 if __name__ == "__main__":
     main()
+    
+    
+# def calculate_qoe(initial_startup_delay, bitrate, buffer_length, stall_count, stall_duration, client_id):
+#     if not (bitrate and buffer_length and stall_count and stall_duration):
+#         return None
+    
+#     qoe_scores = []
+#     w_startup_delay = 0.2
+#     w_bitrate = 0.3
+#     w_buffer_length = 0.2
+#     w_stall_count = 0.15
+#     w_stall_duration = 0.15
+
+#     max_startup_delay = 2.0
+#     max_bitrate = 2000.0
+#     max_buffer_length = 80.0
+#     max_stall_count = 3
+#     max_stall_duration = 10000.0
+
+#     for i in range(len(bitrate)):
+#         time, current_bitrate = bitrate[i]
+#         _, current_buffer_length = buffer_length[i]
+#         _, current_stall_count = stall_count[i]
+#         _, current_stall_duration = stall_duration[i]
+
+#         norm_startup_delay = 1 - (initial_startup_delay / max_startup_delay)
+#         norm_bitrate = current_bitrate / max_bitrate
+#         norm_buffer_length = current_buffer_length / max_buffer_length
+#         norm_stall_count = 1 - (current_stall_count / max_stall_count)
+#         norm_stall_duration = 1 - (current_stall_duration / max_stall_duration)
+
+#         qoe_score = (w_startup_delay * norm_startup_delay +
+#                      w_bitrate * norm_bitrate +
+#                      w_buffer_length * norm_buffer_length +
+#                      w_stall_count * norm_stall_count +
+#                      w_stall_duration * norm_stall_duration)
+
+#         qoe_scores.append((int(time), qoe_score))
+    
+#     print(f"Client ID: {client_id}")
+#     for time, score in qoe_scores:
+#         print(f"Time: {int(time)}, QoE Score: {score}")
+        
+#     qoe_df = pd.DataFrame(qoe_scores, columns=["Time", f"Client_{client_id}_QoE"])
+#     return qoe_df    
