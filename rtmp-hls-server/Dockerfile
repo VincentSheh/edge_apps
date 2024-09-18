@@ -2,7 +2,6 @@ ARG DEBIAN_VERSION=stretch-slim
 
 ##### Building stage #####
 FROM debian:${DEBIAN_VERSION} as builder
-MAINTAINER Tareq Alqutami <tareqaziz2010@gmail.com>
 
 # Versions of nginx, rtmp-module and ffmpeg 
 ARG  NGINX_VERSION=1.17.5

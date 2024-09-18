@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: dash-ls-app
-        image: asture123/parking-tracker-app
+        image: alqutami/rtmp-hls
         ports:
         - containerPort: 1935
         - containerPort: 8080
