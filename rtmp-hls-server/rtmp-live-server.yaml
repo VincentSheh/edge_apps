@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash-ls-deployment
+  # labels:
+  #   app: tiangolo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dash-ls-app
+  template:
+    metadata:
+      labels:
+        app: dash-ls-app
+    spec:
+      containers:
+      - name: dash-ls-app
+        image: asture123/parking-tracker-app
+        ports:
+        - containerPort: 1935
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash-ls-app-service
+spec:
+  selector:
+    app: dash-ls-app
+  ports:
+    - protocol: TCP
+      port: 1935
+      targetPort: 1935
+      name: rtmp
+      nodePort: 30001
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      name: stream
+      
+  type: NodePort
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash-ls-app-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: dashlivestream.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: dash-ls-app-service
+            port:
+              number: 8080    
+            
