@@ -5,7 +5,7 @@ metadata:
   # labels:
   #   app: tiangolo
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: dash-ls-app
@@ -14,6 +14,8 @@ spec:
       labels:
         app: dash-ls-app
     spec:
+      nodeSelector:
+        nodename: worker3
       containers:
       - name: dash-ls-app
         image: alqutami/rtmp-hls
