@@ -2,10 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dash-ls-deployment
-  # labels:
-  #   app: tiangolo
 spec:
-  replicas: 2
+  replicas: 3  # Ensure that there are as many replicas as you have nodes
   selector:
     matchLabels:
       app: dash-ls-app
@@ -14,14 +12,20 @@ spec:
       labels:
         app: dash-ls-app
     spec:
-      nodeSelector:
-        nodename: worker3
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname 
+          # topologyKey: zone #implies the even distribution will only be applied to nodes that are labeled zone: <any value>
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: dash-ls-app
       containers:
       - name: dash-ls-app
         image: alqutami/rtmp-hls
         ports:
-        - containerPort: 1935
-        - containerPort: 8080
+        - containerPort: 1935  # RTMP port
+        - containerPort: 8080  # HTTP (HLS) port
 ---
 apiVersion: v1
 kind: Service
