@@ -22,6 +22,15 @@ spec:
         ports:
         - containerPort: 1935
         - containerPort: 8080
+        volumeMounts:
+        - name: nginx-config
+        - mountPath: /var/lib/lsnginx/nginx.conf # docker run -v custom.conf:/etc/nginx/nginx.conf alqutami/rtmp-hls
+        - subPath: custom.conf
+      volumes:
+      - name: nginx-config
+        hostPath:
+          path: /pv/lsnginx/nginx_custom.conf
+          type: File
 ---
 apiVersion: v1
 kind: Service
