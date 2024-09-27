@@ -10,36 +10,53 @@ import numpy as np
 import pandas as pd
 import os
 import math
+num_clients = 3
+n_cpu_cores = 1000
+file_path = 'qoe_data_hls.csv'
+# initial_sleep_time = np.random.uniform(1,2)
+# watch_time = np.random.uniform(20,25)
+# initial_sleep_time = np.random.uniform(5,20)
+# watch_time = np.random.uniform(40,200)
+initial_sleep_time = 0
+watch_time = 200
 
-url_list = ["http://192.168.50.12:3000/samples/dash-if-reference-player/index_copy.html?mpd=http%3A%2F%2F192.168.50.12%3A8010%2Ftears-b%2Ftears-b.mpd&autoLoad=true&muted=true+&debug.logLevel=5&streaming.capabilities.supportedEssentialProperties.0.schemeIdUri=urn%3Advb%3Adash%3Afontdownload%3A2014&streaming.capabilities.supportedEssentialProperties.1.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AColourPrimaries&streaming.capabilities.supportedEssentialProperties.2.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AMatrixCoefficients&streaming.capabilities.supportedEssentialProperties.3.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3ATransferCharacteristics&streaming.capabilities.supportedEssentialProperties.4.schemeIdUri=http%3A%2F%2Fdashif.org%2Fthumbnail_tile&streaming.capabilities.supportedEssentialProperties.5.schemeIdUri=http%3A%2F%2Fdashif.org%2Fguidelines%2Fthumbnail_tile&streaming.delay.liveDelayFragmentCount=NaN&streaming.delay.liveDelay=NaN&streaming.buffer.initialBufferLevel=NaN&streaming.liveCatchup.maxDrift=NaN&streaming.liveCatchup.playbackRate.min=NaN&streaming.liveCatchup.playbackRate.max=NaN",
-            "http://192.168.50.12:3000/samples/dash-if-reference-player/index_copy.html?mpd=http%3A%2F%2F192.168.50.12%3A8010%2Ftears-a%2Ftears-a.mpd&autoLoad=true&muted=true+&debug.logLevel=5&streaming.capabilities.supportedEssentialProperties.0.schemeIdUri=urn%3Advb%3Adash%3Afontdownload%3A2014&streaming.capabilities.supportedEssentialProperties.1.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AColourPrimaries&streaming.capabilities.supportedEssentialProperties.2.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AMatrixCoefficients&streaming.capabilities.supportedEssentialProperties.3.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3ATransferCharacteristics&streaming.capabilities.supportedEssentialProperties.4.schemeIdUri=http%3A%2F%2Fdashif.org%2Fthumbnail_tile&streaming.capabilities.supportedEssentialProperties.5.schemeIdUri=http%3A%2F%2Fdashif.org%2Fguidelines%2Fthumbnail_tile&streaming.delay.liveDelayFragmentCount=NaN&streaming.delay.liveDelay=NaN&streaming.buffer.initialBufferLevel=NaN&streaming.liveCatchup.maxDrift=NaN&streaming.liveCatchup.playbackRate.min=NaN&streaming.liveCatchup.playbackRate.max=NaN",
-            "http://192.168.50.12:3000/samples/dash-if-reference-player/index_copy.html?mpd=http%3A%2F%2F192.168.50.12%3A8010%2Fnomor%2F1.mpd&autoLoad=true&muted=true+&debug.logLevel=5&streaming.capabilities.supportedEssentialProperties.0.schemeIdUri=urn%3Advb%3Adash%3Afontdownload%3A2014&streaming.capabilities.supportedEssentialProperties.1.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AColourPrimaries&streaming.capabilities.supportedEssentialProperties.2.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AMatrixCoefficients&streaming.capabilities.supportedEssentialProperties.3.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3ATransferCharacteristics&streaming.capabilities.supportedEssentialProperties.4.schemeIdUri=http%3A%2F%2Fdashif.org%2Fthumbnail_tile&streaming.capabilities.supportedEssentialProperties.5.schemeIdUri=http%3A%2F%2Fdashif.org%2Fguidelines%2Fthumbnail_tile&streaming.delay.liveDelayFragmentCount=NaN&streaming.delay.liveDelay=NaN&streaming.buffer.initialBufferLevel=NaN&streaming.liveCatchup.maxDrift=NaN&streaming.liveCatchup.playbackRate.min=NaN&streaming.liveCatchup.playbackRate.max=NaN",
-            "http://192.168.50.12:3000/samples/dash-if-reference-player/index_copy.html?mpd=http%3A%2F%2F192.168.50.12%3A8010%2Fnomor%2F3.mpd&autoLoad=true&muted=true+&debug.logLevel=5&streaming.capabilities.supportedEssentialProperties.0.schemeIdUri=urn%3Advb%3Adash%3Afontdownload%3A2014&streaming.capabilities.supportedEssentialProperties.1.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AColourPrimaries&streaming.capabilities.supportedEssentialProperties.2.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AMatrixCoefficients&streaming.capabilities.supportedEssentialProperties.3.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3ATransferCharacteristics&streaming.capabilities.supportedEssentialProperties.4.schemeIdUri=http%3A%2F%2Fdashif.org%2Fthumbnail_tile&streaming.capabilities.supportedEssentialProperties.5.schemeIdUri=http%3A%2F%2Fdashif.org%2Fguidelines%2Fthumbnail_tile&streaming.delay.liveDelayFragmentCount=NaN&streaming.delay.liveDelay=NaN&streaming.buffer.initialBufferLevel=NaN&streaming.liveCatchup.maxDrift=NaN&streaming.liveCatchup.playbackRate.min=NaN&streaming.liveCatchup.playbackRate.max=NaN",
-            "http://192.168.50.12:3000/samples/dash-if-reference-player/index_copy.html?mpd=http%3A%2F%2F192.168.50.12%3A8010%2Fnomor%2F3.mpd&autoLoad=true&muted=true+&debug.logLevel=5&streaming.capabilities.supportedEssentialProperties.0.schemeIdUri=urn%3Advb%3Adash%3Afontdownload%3A2014&streaming.capabilities.supportedEssentialProperties.1.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AColourPrimaries&streaming.capabilities.supportedEssentialProperties.2.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AMatrixCoefficients&streaming.capabilities.supportedEssentialProperties.3.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3ATransferCharacteristics&streaming.capabilities.supportedEssentialProperties.4.schemeIdUri=http%3A%2F%2Fdashif.org%2Fthumbnail_tile&streaming.capabilities.supportedEssentialProperties.5.schemeIdUri=http%3A%2F%2Fdashif.org%2Fguidelines%2Fthumbnail_tile&streaming.delay.liveDelayFragmentCount=NaN&streaming.delay.liveDelay=NaN&streaming.buffer.initialBufferLevel=NaN&streaming.liveCatchup.maxDrift=NaN&streaming.liveCatchup.playbackRate.min=NaN&streaming.liveCatchup.playbackRate.max=NaN",
-            "http://192.168.50.12:3000/samples/dash-if-reference-player/index_copy.html?mpd=http%3A%2F%2F192.168.50.12%3A8010%2Fnomor%2F5.mpd&autoLoad=true&muted=true+&debug.logLevel=5&streaming.capabilities.supportedEssentialProperties.0.schemeIdUri=urn%3Advb%3Adash%3Afontdownload%3A2014&streaming.capabilities.supportedEssentialProperties.1.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AColourPrimaries&streaming.capabilities.supportedEssentialProperties.2.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3AMatrixCoefficients&streaming.capabilities.supportedEssentialProperties.3.schemeIdUri=urn%3Ampeg%3AmpegB%3Acicp%3ATransferCharacteristics&streaming.capabilities.supportedEssentialProperties.4.schemeIdUri=http%3A%2F%2Fdashif.org%2Fthumbnail_tile&streaming.capabilities.supportedEssentialProperties.5.schemeIdUri=http%3A%2F%2Fdashif.org%2Fguidelines%2Fthumbnail_tile&streaming.delay.liveDelayFragmentCount=NaN&streaming.delay.liveDelay=NaN&streaming.buffer.initialBufferLevel=NaN&streaming.liveCatchup.maxDrift=NaN&streaming.liveCatchup.playbackRate.min=NaN&streaming.liveCatchup.playbackRate.max=NaN",]
-
-def write_or_append_csv(file_path,df):
-    if not os.path.isfile(file_path):
-        df.to_csv(file_path, index=False)
+url_list = [
+    "http://127.0.0.1:8080/demo/index.html?src=http%3A%2F%2F192.168.50.54%3A30002%2Fhls%2Ftest.m3u8&demoConfig=eyJlbmFibGVTdHJlYW1pbmciOnRydWUsImF1dG9SZWNvdmVyRXJyb3IiOnRydWUsInN0b3BPblN0YWxsIjpmYWxzZSwiZHVtcGZNUDQiOmZhbHNlLCJsZXZlbENhcHBpbmciOi0xLCJsaW1pdE1ldHJpY3MiOi0xfQ==",
+    "http://127.0.0.1:8080/demo/index.html?src=http%3A%2F%2F192.168.50.54%3A30002%2Fhls%2Ftest2.m3u8&demoConfig=eyJlbmFibGVTdHJlYW1pbmciOnRydWUsImF1dG9SZWNvdmVyRXJyb3IiOnRydWUsInN0b3BPblN0YWxsIjpmYWxzZSwiZHVtcGZNUDQiOmZhbHNlLCJsZXZlbENhcHBpbmciOi0xLCJsaW1pdE1ldHJpY3MiOi0xfQ==",
+    "http://127.0.0.1:8080/demo/index.html?src=http%3A%2F%2F192.168.50.54%3A30002%2Fhls%2Ftest3.m3u8&demoConfig=eyJlbmFibGVTdHJlYW1pbmciOnRydWUsImF1dG9SZWNvdmVyRXJyb3IiOnRydWUsInN0b3BPblN0YWxsIjpmYWxzZSwiZHVtcGZNUDQiOmZhbHNlLCJsZXZlbENhcHBpbmciOi0xLCJsaW1pdE1ldHJpY3MiOi0xfQ==",
+    "http://127.0.0.1:8080/demo/index.html?src=http%3A%2F%2F192.168.50.12%3A8080%2Fhls%2Ftest.m3u8&demoConfig=eyJlbmFibGVTdHJlYW1pbmciOnRydWUsImF1dG9SZWNvdmVyRXJyb3IiOnRydWUsInN0b3BPblN0YWxsIjpmYWxzZSwiZHVtcGZNUDQiOmZhbHNlLCJsZXZlbENhcHBpbmciOi0xLCJsaW1pdE1ldHJpY3MiOi0xfQ==",
+            ]
+def write_or_append_csv(path, df):
+    if not os.path.isfile(path):
+        df.to_csv(path, index=False)
     else:
-        df.to_csv(file_path, mode='a', header=False, index=False)    
+        df.to_csv(path, mode='a', header=False, index=False)    
     return df  
 def calculate_qoe(metrics, client_id, tend):
     # Get Metrics Dataframe
     tend = tend
     buffer_df = pd.DataFrame(metrics['buffer'])
-    level_df = pd.DataFrame(metrics['level'])
-    level_to_bitrate_map = {4: 6079, 3: 2099, 2: 817, 1: 450, 0: 241}
-    level_df.loc[:,'levelBR'] = level_df['id'].map(lambda x : level_to_bitrate_map[x])    
     if buffer_df.shape[0] <= 1:
         qoe_df = pd.DataFrame({
             'client_id': [client_id],
-            'video_resolution': [],
-            'variation_rate': [],
-            'startup_delay': [],
-            'avg_stall_duration': [],
+            'video_resolution': [None],
+            'variation_rate': [None],
+            'startup_delay': [None],
+            'avg_stall_duration': [None],
             f'qoe_{client_id}': [0]
-        })           
+        })            
+        write_or_append_csv(file_path,qoe_df)
+        qoe_df['cpu'] = n_cpu_cores
+        qoe_df['user'] = num_clients
+        qoe_df['watch_time'] = watch_time
+        write_or_append_csv("qoe_data_hls_resourcevsuser.csv",qoe_df)
+        return qoe_df
+        
+        return qoe_df
+    level_df = pd.DataFrame(metrics['level'])
+    level_to_bitrate_map = {2: 1125, 1: 438, 0: 281}
+    level_df.loc[:,'levelBR'] = level_df['id'].map(lambda x : level_to_bitrate_map[x])    
+   
     # Update Buffer and Level to Include the termination time
     last_row_buffer_df = buffer_df.iloc[-1].copy()
     last_row_buffer_df['time'] = tend
@@ -65,8 +82,8 @@ def calculate_qoe(metrics, client_id, tend):
     buffer_df['stall'] = (buffer_df['buffer'] == 0).astype(int)
     buffer_df['time_diff'] = buffer_df['time'].diff()
     buffer_df.loc[0,'time_diff'] = 0
-    stall_duration = buffer_df.loc[buffer_df['stall']==1, 'time_diff'].sum() - startup_delay
-    average_stall_duration = stall_duration/(tend-startup_delay)
+    stall_duration = buffer_df.loc[buffer_df['stall']==1, 'time_diff'].sum()
+    average_stall_duration = stall_duration/tend
     
     
     # TODO: Normalize using Standard Normalization, when collecting data, record it in a csv and then get the mean and variance
@@ -88,8 +105,11 @@ def calculate_qoe(metrics, client_id, tend):
     })    
     
     # ? Record QoE Data
-    file_path = 'qoe_data_hls.csv'
-    write_or_append_csv(file_path, qoe_df)
+    write_or_append_csv(file_path,qoe_df)
+    qoe_df['cpu'] = n_cpu_cores
+    qoe_df['user'] = num_clients
+    qoe_df['watch_time'] = watch_time
+    write_or_append_csv("qoe_data_hls_resourcevsuser.csv",qoe_df)
     return qoe_df
 
   # TODO Create Convert to Pandas CSV
@@ -97,17 +117,13 @@ def calculate_qoe(metrics, client_id, tend):
 chrome_driver_path = '/opt/homebrew/bin/chromedriver'
 def emulate_client(client_id,results):
     # Specify the path to the ChromeDriver
-    # initial_sleep_time = np.random.uniform(1,2)
-    watch_time = np.random.uniform(20,25)
-    initial_sleep_time = np.random.uniform(5,20)
-    # watch_time = np.random.uniform(40,200)
-    video_number = np.random.choice(5)
-    print(video_number)
+
+
     # ? Random User Arrival
     time.sleep(initial_sleep_time)
     # Set up Chrome options
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Run in headless mode if you don't need a GUI
+    # chrome_options.add_argument("--headless")  # Run in headless mode if you don't need a GUI
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     # Set up the ChromeDriver service
@@ -116,8 +132,9 @@ def emulate_client(client_id,results):
     driver = webdriver.Chrome(service=service, options=chrome_options)
     # driver = webdriver.Chrome(ChromeDriverManager().install()) #Use WebDriverManager Instead
 
-    # driver.get(url_list[video_number])
-    driver.get("http://127.0.0.1:8080/demo/?src=http%3A%2F%2F192.168.50.12%3A8080%2Fhls%2Ftest.m3u8&demoConfig=eyJlbmFibGVTdHJlYW1pbmciOnRydWUsImF1dG9SZWNvdmVyRXJyb3IiOnRydWUsInN0b3BPblN0YWxsIjpmYWxzZSwiZHVtcGZNUDQiOmZhbHNlLCJsZXZlbENhcHBpbmciOi0xLCJsaW1pdE1ldHJpY3MiOi0xfQ==")
+    # driver.get(url_list[client_id])
+    driver.get(url_list[3])
+    # driver.get("http://127.0.0.1:8080/demo/index.html?src=http%3A%2F%2F192.168.50.54%3A30002%2Fhls%2Ftest.m3u8&demoConfig=eyJlbmFibGVTdHJlYW1pbmciOnRydWUsImF1dG9SZWNvdmVyRXJyb3IiOnRydWUsInN0b3BPblN0YWxsIjpmYWxzZSwiZHVtcGZNUDQiOmZhbHNlLCJsZXZlbENhcHBpbmciOi0xLCJsaW1pdE1ldHJpY3MiOi0xfQ==")
     
 
     # Initialize empty lists for metrics
@@ -144,20 +161,17 @@ def emulate_client(client_id,results):
     """)
     tend = driver.execute_script("return performance.now()-events.t0")
     
-    with open("sample.json", "w") as outfile:
-        json.dump(jsonMetrics, outfile)
+    # with open("sample.json", "w") as outfile:
+    #     json.dump(jsonMetrics, outfile)
     print("Finished Running, Aggregating QoE Scores...")
-    
-    # metrics = json.loads(jsonMetrics)
     metrics = jsonMetrics
-    # print(metrics)
-    qoe_df = calculate_qoe(metrics, client_id, tend)
-    
+    _ = calculate_qoe(metrics, client_id, tend)
     driver.quit()
 
 def main():
   while True:
-    num_clients = 5
+
+    
     threads = []
     results = {}
     
