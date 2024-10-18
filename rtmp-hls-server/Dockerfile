@@ -1,21 +1,14 @@
-# Use alqutami/rtmp-hls as the base image
-FROM alqutami/rtmp-hls
+# Start from the official OpenResty base image
+FROM openresty/openresty:alpine
 
-# Install necessary dependencies for Lua and OpenResty
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    wget \
-    && add-apt-repository -y ppa:openresty/ppa \
-    && apt-get update \
-    && apt-get install -y openresty \
-    && apt-get install -y luarocks
+# Install FFmpeg for video processing
+RUN apk add --no-cache ffmpeg
 
-# Ensure OpenResty is using LuaJIT for Lua support in NGINX
-RUN luarocks install lua-resty-core
-RUN luarocks install lua-resty-lrucache
+# Copy your custom NGINX configuration to the container
+COPY conf/nginx_custom.conf /usr/local/openresty/nginx/conf/nginx.conf
 
-# Copy your custom NGINX configuration with Lua scripting
-COPY custom.conf /etc/nginx/nginx.conf
+# Expose the necessary ports
+EXPOSE 1935 8080
 
-# Define entrypoint to start OpenResty
+# Start OpenResty (NGINX)
 CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
