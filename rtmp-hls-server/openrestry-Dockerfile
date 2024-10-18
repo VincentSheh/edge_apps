@@ -1,0 +1,51 @@
+# Use Alpine Linux as a base image
+FROM alpine:3.11
+
+# Install build dependencies
+RUN apk add --no-cache \
+        bash \
+        gcc \
+        g++ \
+        make \
+        openssl \
+        pcre-dev \
+        zlib-dev \
+        curl \
+        ffmpeg \
+        libvorbis-dev \
+        libtheora-dev \
+        libvpx-dev \
+        x264-dev \
+        x265-dev \
+        wget
+
+RUN apk update && \
+    apk add --no-cache \
+        openssl-dev 
+
+# Download and build the NGINX-RTMP module
+ARG NGINX_VERSION=1.19.6
+ARG NGINX_RTMP_MODULE_VERSION=1.2.1
+RUN mkdir -p /tmp/build && \
+    cd /tmp/build && \
+    wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
+    tar zxvf nginx-${NGINX_VERSION}.tar.gz && \
+    wget https://github.com/arut/nginx-rtmp-module/archive/refs/tags/v1.2.1.tar.gz && \
+    tar zxvf v${NGINX_RTMP_MODULE_VERSION}.tar.gz && \
+    cd nginx-${NGINX_VERSION} && \
+    ./configure --with-http_ssl_module --add-module=/tmp/build/nginx-rtmp-module-${NGINX_RTMP_MODULE_VERSION} && \
+    make && \
+    make install
+
+# Copy your custom NGINX configuration with RTMP support
+COPY ./conf/nginx.conf /usr/local/nginx/conf/nginx.conf
+
+# Create necessary directories for HLS
+RUN mkdir -p /mnt/hls && \
+    mkdir -p /mnt/recordings
+
+# Expose RTMP and HTTP ports
+EXPOSE 1935 8080
+
+# Start NGINX with RTMP module
+CMD ["/usr/local/nginx/sbin/nginx", "-g", "daemon off;"]
