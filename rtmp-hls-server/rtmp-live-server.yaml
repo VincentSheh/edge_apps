@@ -1,48 +1,71 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dash-ls-deployment
+  name: hls-ls-deployment
 spec:
-  replicas: 3  # Ensure that there are as many replicas as you have nodes
+  replicas: 1  # Ensure that there are as many replicas as you have nodes
   selector:
     matchLabels:
-      app: dash-ls-app
+      app: hls-ls-app
   template:
     metadata:
       labels:
-        app: dash-ls-app
+        app: hls-ls-app
     spec:
       topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname 
-          # topologyKey: zone #implies the even distribution will only be applied to nodes that are labeled zone: <any value>
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              app: dash-ls-app
+         - maxSkew: 1
+           topologyKey: kubernetes.io/hostname 
+           # topologyKey: zone #implies the even distribution will only be applied to nodes that are labeled zone: <any value>
+           whenUnsatisfiable: DoNotSchedule
+           labelSelector:
+             matchLabels:
+               app: hls-ls-app
       containers:
-      - name: dash-ls-app
-        image: alqutami/rtmp-hls
+      - name: hls-ls-app
+        image: openresty/openresty
+        # image: alqutami/rtmp-hls
+        resizePolicy:
+        - resourceName: cpu
+          restartPolicy: NotRequired
+        - resourceName: memory
+          restartPolicy: RestartContainer        
+        resources:
+          limits:
+            cpu: 1000m
+            # memory: 3072Mi
+          requests:
+            cpu: 1000m
+            # memory: 4096Mi          
         ports:
         - containerPort: 1935  # RTMP port
         - containerPort: 8080  # HTTP (HLS) port
         volumeMounts:
-        - name: nginx-config
-        - mountPath: /var/lib/lsnginx/nginx.conf # docker run -v custom.conf:/etc/nginx/nginx.conf alqutami/rtmp-hls
-        - subPath: custom.conf
+        - name: ls-nginx-video
+          mountPath: /pv/lsnginx  # Mount the NFS volume
       volumes:
-      - name: nginx-config
-        hostPath:
-          path: /pv/lsnginx/nginx_custom.conf
-          type: File
+      - name: ls-nginx-config
+        # hostPath:
+        #   path: /pv/lsnginx/nginx_custom.conf
+        #   type: File
+        configMap:
+          name: ls-nginx-configmap
+          items:
+          - key: custom.conf
+            path: custom.conf  
+      - name: ls-nginx-video
+        persistentVolumeClaim:
+          claimName: lsnginx-pvc  # Reference the NFS PVC
+      #nodeSelector:
+        #nodename: worker3    
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: dash-ls-app-service
+  name: hls-ls-app-service
 spec:
   selector:
-    app: dash-ls-app
+    app: hls-ls-app
   ports:
     - protocol: TCP
       port: 1935
@@ -54,23 +77,263 @@ spec:
       targetPort: 8080
       name: stream
       nodePort: 30002
+  type: ClusterIP
   type: NodePort
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: lsnginx-pv
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadOnlyMany  # NFS allows ReadWriteMany for shared access across nodes
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-storage
+  nfs:
+    path: /pv/lsnginx  # The path to the shared NFS directory on your NFS server
+    server: 192.168.50.54  # The IP address of your NFS server  
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lsnginx-pvc
+spec:
+  accessModes:
+    - ReadOnlyMany  # ReadWriteMany is required for NFS shared access
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: nfs-storage  
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: dash-ls-app-ingress
+  name: hls-ls-app-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"  # Hash load balancing based on request URI (e.g., /live/test1)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      set $stream_key '';
+      if ($request_uri ~* "^/live/([^/]+)/?$") {
+          set $stream_key $1;
+      }
+      if ($request_uri ~* "^/hls/([^/]+)\.m3u8$") {
+          set $stream_key $1;
+      }
+      proxy_set_header X-Stream-Key $stream_key;
 spec:
   ingressClassName: nginx
   rules:
-  - host: dashlivestream.com
+  - host: hlslivestream.com
     http:
       paths:
-      - path: /
-        pathType: Prefix
+      # This matches RTMP upload streams (e.g., /live/test1)
+      - path: /live/(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
-            name: dash-ls-app-service
+            name: hls-ls-app-service
             port:
-              number: 8080    
-            
+              number: 8080
+      # This matches HLS stream requests (e.g., /hls/test1.m3u8)
+      - path: /hls/(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: hls-ls-app-service
+            port:
+              number: 8080                  
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ls-nginx-configmap
+data:
+  custom.conf: |
+    worker_processes  auto;
+    #error_log  logs/error.log;
+
+    events {
+        worker_connections  1024;
+    }
+
+    # RTMP configuration
+    rtmp {
+        server {
+        listen 1935; # Listen on standard RTMP port
+        chunk_size 4000; 
+        # ping 30s;
+        # notify_method get;
+
+        # This application is to accept incoming stream
+        application live {
+          live on; # Allows live input
+
+          # for each received stream, transcode for adaptive streaming
+          # This single ffmpeg command takes the input and transforms
+          # the source into 4 different streams with different bitrates
+          # and qualities. # these settings respect the aspect ratio.
+          exec_push  /usr/local/bin/ffmpeg -i rtmp://localhost:1935/$app/$name -async 1 -vsync -1
+                -c:v libx264 -c:a aac -b:v 256k  -b:a 64k  -vf "scale=480:trunc(ow/a/2)*2"  -tune zerolatency -preset superfast -crf 23 -f flv rtmp://localhost:1935/show/$name_low
+                -c:v libx264 -c:a aac -b:v 768k  -b:a 128k -vf "scale=720:trunc(ow/a/2)*2"  -tune zerolatency -preset superfast -crf 23 -f flv rtmp://localhost:1935/show/$name_mid
+                -c:v libx264 -c:a aac -b:v 1024k -b:a 128k -vf "scale=960:trunc(ow/a/2)*2"  -tune zerolatency -preset superfast -crf 23 -f flv rtmp://localhost:1935/show/$name_high
+                -c:v libx264 -c:a aac -b:v 1920k -b:a 128k -vf "scale=1280:trunc(ow/a/2)*2" -tune zerolatency -preset superfast -crf 23 -f flv rtmp://localhost:1935/show/$name_hd720
+                -c copy -f flv rtmp://localhost:1935/show/$name_src;			
+          drop_idle_publisher 10s; 
+        }
+
+        # This is the HLS application
+        application show {
+          live on; # Allows live input from above application
+          deny play all; # disable consuming the stream from nginx as rtmp
+          
+          hls on; # Enable HTTP Live Streaming
+          hls_fragment 3;
+          hls_playlist_length 20;
+          hls_path /mnt/hls/;  # hls fragments path
+          # Instruct clients to adjust resolution according to bandwidth
+          hls_variant _src BANDWIDTH=4096000; # Source bitrate, source resolution
+          hls_variant _hd720 BANDWIDTH=2048000; # High bitrate, HD 720p resolution
+          hls_variant _high BANDWIDTH=1152000; # High bitrate, higher-than-SD resolution
+          hls_variant _mid BANDWIDTH=448000; # Medium bitrate, SD resolution
+          hls_variant _low BANDWIDTH=288000; # Low bitrate, sub-SD resolution
+          
+          # MPEG-DASH
+                dash on;
+                dash_path /mnt/dash/;  # dash fragments path
+          dash_fragment 3;
+          dash_playlist_length 20;			
+        }
+      }
+    }
+
+
+    server {
+      listen 8080;
+
+      # Trigger FFmpeg when /hls/<stream_key>.m3u8 is requested
+      location /hls {
+        types {
+          application/vnd.apple.mpegurl m3u8;
+          video/mp2t ts;
+        }
+
+        root /mnt;
+        
+        # Custom Lua logic to handle starting and stopping of FFmpeg processes
+        content_by_lua_block {
+          local stream_key = ngx.var.uri:match("/hls/(.+)%.m3u8$")
+          if stream_key then
+            local stream_sessions = ngx.shared.stream_sessions
+            local active_sessions = stream_sessions:get(stream_key)
+
+            -- If there are no active sessions, start a new FFmpeg process
+            if not active_sessions or active_sessions == 0 then
+              local command = string.format(
+                'ffmpeg -re -i "/mnt/video/%s.mp4" -c copy -f flv "rtmp://localhost:1935/live/%s" &',
+                stream_key, stream_key
+              )
+              os.execute(command)
+              ngx.log(ngx.INFO, "Started live stream for key: " .. stream_key)
+            end
+
+            -- Increment the active session counter for this stream key
+            stream_sessions:incr(stream_key, 1, 0)
+
+            -- Serve the HLS playlist (.m3u8) or segment (.ts)
+            ngx.exec("/mnt/hls/" .. stream_key .. ".m3u8")
+          else
+            ngx.status = ngx.HTTP_NOT_FOUND
+            ngx.say("Stream key not found")
+          end
+        }
+      }
+
+      # Serve HLS fragments and manage sessions when streaming ends
+      location ~ /hls/.*\.ts$ {
+        root /mnt;
+        
+        content_by_lua_block {
+          -- Extract stream key from the URI (this is the session termination point)
+          local stream_key = ngx.var.uri:match("/hls/(.+)%.ts$")
+          local stream_sessions = ngx.shared.stream_sessions
+          local active_sessions = stream_sessions:get(stream_key)
+
+          if active_sessions then
+            -- Decrement the session counter
+            local remaining_sessions = stream_sessions:incr(stream_key, -1)
+
+            -- If no sessions remain, stop the FFmpeg process
+            if remaining_sessions <= 0 then
+              local stop_command = string.format("pkill -f 'ffmpeg.*%s'", stream_key)
+              os.execute(stop_command)
+              stream_sessions:set(stream_key, 0)  -- Reset the session counter
+              ngx.log(ngx.INFO, "Stopped live stream for key: " .. stream_key)
+            end
+          end
+
+          ngx.exec("/mnt/hls" .. ngx.var.uri)
+        }
+      }
+        
+            # Serve DASH fragments
+            location /dash {
+                types {
+                    application/dash+xml mpd;
+                    video/mp4 mp4;
+                }
+
+          root /mnt;
+          
+          add_header Cache-Control no-cache; # Disable cache
+
+
+                # CORS setup
+                add_header 'Access-Control-Allow-Origin' '*' always;
+                add_header 'Access-Control-Expose-Headers' 'Content-Length';
+
+                # Allow CORS preflight requests
+                if ($request_method = 'OPTIONS') {
+                    add_header 'Access-Control-Allow-Origin' '*';
+                    add_header 'Access-Control-Max-Age' 1728000;
+                    add_header 'Content-Type' 'text/plain charset=UTF-8';
+                    add_header 'Content-Length' 0;
+                    return 204;
+                }
+            }		
+        
+        # This URL provides RTMP statistics in XML
+        location /stat {
+          rtmp_stat all;
+          rtmp_stat_stylesheet stat.xsl; # Use stat.xsl stylesheet 
+        }
+
+        location /stat.xsl {
+          # XML stylesheet to view RTMP stats.
+          root /usr/local/nginx/html;
+        }
+
+      }
+    }
+
+
+# ---
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: hls-ls-app-ingress
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   - host: hlslivestream.com
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: hls-ls-app-service
+#             port:
+#               number: 8080    
