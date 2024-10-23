@@ -23,7 +23,7 @@ spec:
       containers:
       - name: hls-ls-app
         # image: alqutami/rtmp-hls
-        image: asture123/hls-flask
+        image: asture123/hls-flask:latest
         resizePolicy:
         - resourceName: cpu
           restartPolicy: NotRequired
@@ -39,10 +39,13 @@ spec:
         ports:
         - containerPort: 1935  # RTMP port
         - containerPort: 8080  # HTTP (HLS) port
+        - containerPort: 5000  # For python ffmpeg control
         volumeMounts:
         - name: ls-nginx-config
           mountPath: /etc/nginx/nginx.conf # docker run -v custom.conf:/etc/nginx/nginx.conf alqutami/rtmp-hls
           subPath: custom.conf
+        - name: ls-nginx-video
+          mountPath: /pv/lsnginx
       volumes:
       - name: ls-nginx-config
         # hostPath:
@@ -56,8 +59,8 @@ spec:
       - name: ls-nginx-video
         persistentVolumeClaim:
           claimName: lsnginx-pvc  # Reference the NFS PVC
-      #nodeSelector:
-        #nodename: worker3    
+      nodeSelector:
+        nodename: worker3    
 
 ---
 apiVersion: v1
@@ -87,20 +90,63 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: hls-ls-app-ingress
+  annotations:
+  #   nginx.ingress.kubernetes.io/configuration-snippet: |
+  #     set $key "";
+  #     # Extract the stream key from initialization requests
+  #     if ($request_uri ~* "^/stream/initialize/test(.*)$") {
+  #         set $key $1;  # e.g., test1
+  #     }
+  #     # Extract the stream key from termination requests
+  #     if ($request_uri ~* "^/stream/terminate/test(.*)$") {
+  #         set $key $1;  # e.g., test1
+  #     }      
+  #     # Extract the stream key from HLS requests
+  #     if ($request_uri ~* "^/hls/test(.*)\\.m3u8$") {
+  #         set $key $1;  # e.g., test1
+  #     }
+
+    # nginx.ingress.kubernetes.io/upstream-hash-by: "$key"  # Hash based on the extracted stream key
+    # nginx.ingress.kubernetes.io/upstream-hash-by: "$http_streamkey"  # Hash based on the HTTP header
+    # nginx.ingress.kubernetes.io/whitelist-source-range: "192.168.50.0/24"  # Allow this range
+    # nginx.ingress.kubernetes.io/configuration-snippet: |
+    #   # Block specific IP addresses
+    #   deny 192.168.1.130;  # Deny this IP
+
+
 spec:
   ingressClassName: nginx
   rules:
   - host: hlslivestream.com
     http:
       paths:
+      # Route requests for stream initialization
+      - path: /stream/initialize/
+        pathType: Prefix
+        backend:
+          service:
+            name: hls-ls-app-service
+            port:
+              number: 5000  # Points to the service that handles streaming initialization
+
+      # Route requests for stream termination
+      - path: /stream/terminate/
+        pathType: Prefix
+        backend:
+          service:
+            name: hls-ls-app-service
+            port:
+              number: 5000  # Also point to the same service
+
+      # Route requests for HLS streaming output
       - path: /
         pathType: Prefix
         backend:
           service:
             name: hls-ls-app-service
             port:
-              number: 8080    
----
+              number: 8080  # Points to the service that handles HLS streaming
+---              
 
 apiVersion: v1
 kind: PersistentVolume
@@ -270,36 +316,29 @@ data:
 
       }
     }
----
+# ---
 # apiVersion: networking.k8s.io/v1
 # kind: Ingress
 # metadata:
 #   name: hls-ls-app-ingress
-#   annotations:
-#     nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"  # Hash load balancing based on request URI (e.g., /live/test1)
-#     nginx.ingress.kubernetes.io/configuration-snippet: |
-#       set $stream_key '';
-#       if ($request_uri ~* "^/live/([^/]+)/?$") {
-#           set $stream_key $1;
-#       }
-#       if ($request_uri ~* "^/hls/([^/]+)\.m3u8$") {
-#           set $stream_key $1;
-#       }
-#       proxy_set_header X-Stream-Key $stream_key;
 # spec:
 #   ingressClassName: nginx
 #   rules:
 #   - host: hlslivestream.com
 #     http:
 #       paths:
-#       # This matches HLS stream requests (e.g., /hls/test1.m3u8)
-#       - path: /hls/(.*)
-#         pathType: ImplementationSpecific
+#       - path: /stream/
+#         pathType: Prefix
 #         backend:
 #           service:
 #             name: hls-ls-app-service
 #             port:
-#               number: 8080      
-
-
---- 
+#               number: 5000  # Points to the service that handles the Python API      
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: hls-ls-app-service
+#             port:
+#               number: 8080    
+# --- 
