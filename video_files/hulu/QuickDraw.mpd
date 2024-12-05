@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:DASH:schema:MPD:2011" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011" type="static" minBufferTime="PT1.500S" mediaPresentationDuration="PT1390.472S">
+	<Period>
+		<AdaptationSet mimeType="video/mp4" segmentAlignment="true" bitstreamSwitching="true">
+			<ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc"/>
+			<ContentProtection schemeIdUri="urn:uuid:9a04f079-9840-4286-ab92-e65be0885f95"/>
+			<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/>
+			<Representation id="1" codecs="avc1.64001E" width="720" height="400" startWithSAP="1" bandwidth="813193">
+				<BaseURL>QuickDraw_video.mp4</BaseURL>
+				<SegmentBase indexRange="1540-4931" indexRangeExact="true">
+					<Initialization range="0-1539"/>
+				</SegmentBase>
+			</Representation>
+		</AdaptationSet>
+		<AdaptationSet mimeType="audio/mp4" segmentAlignment="true" bitstreamSwitching="true">
+			<ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc"/>
+			<ContentProtection schemeIdUri="urn:uuid:9a04f079-9840-4286-ab92-e65be0885f95"/>
+			<ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/>
+			<Representation id="2" codecs="mp4a.40.2" audioSamplingRate="48000" startWithSAP="1" bandwidth="64000">
+				<AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="1"/>
+				<BaseURL>QuickDraw_audio.mp4</BaseURL>
+				<SegmentBase indexRange="1483-4838" indexRangeExact="true">
+					<Initialization range="0-1482"/>
+				</SegmentBase>
+			</Representation>
+		</AdaptationSet>
+	</Period>
+</MPD>

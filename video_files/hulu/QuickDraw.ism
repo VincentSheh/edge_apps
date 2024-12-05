@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<smil xmlns="http://www.w3.org/2001/SMIL20/Language">
+	<head>
+		<meta name="clientManifestRelativePath" content="QuickDraw.ismc"/>
+	</head>
+	<body>
+		<switch>
+			<video src="QuickDraw_video.mp4" systemBitrate="813193">
+				<param name="trackID" value="1" valueType="data"/>
+			</video>
+			<audio src="QuickDraw_audio.mp4" systemBitrate="64000">
+				<param name="trackID" value="1" valueType="data"/>
+			</audio>
+		</switch>
+	</body>
+</smil>

@@ -1,6 +1,7 @@
 redbull/
 tears-a/
-./video_files/
+video_files/
+*.mpd
 *.m4s
 *.mp4
 *.m3u8
