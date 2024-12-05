@@ -55,69 +55,9 @@ def write_or_append_csv(path, df):
     else:
         df.to_csv(path, mode='a', header=False, index=False)    
     return df  
-
-QUERIES = {
-    "CPU Usage": "sum(rate(container_cpu_usage_seconds_total{namespace='default'}[150s])) by (pod)",
-    "CPU Limit": "sum(kube_pod_container_resource_limits{resource='cpu', namespace='default'}) by (pod)",
-    "Memory Usage": "sum(rate(container_memory_usage_bytes{namespace='default', container!=''}[150s])) by (pod)",
-    "Memory Limit": "sum(kube_pod_container_resource_limits{resource='memory', namespace='default'}) by (pod)",
-    "NW Throughput Transmit": "sum(rate(container_network_transmit_bytes_total{namespace='default'}[150s]))",
-    "NW Throughput Receive": "sum(rate(container_network_receive_bytes_total{namespace='default'}[150s]))",
-    "Packet Drops": "sum(rate(container_network_receive_packets_dropped_total{namespace='default'}[150s]))",
-    # "Disk I/O Read": "sum(rate(node_disk_read_bytes_total{node='worker3'}[150s]))",
-    # "Disk I/O Write": "sum(rate(node_disk_written_bytes_total{node='worker3'}[150s]))",
-    # "Disk Usage": "sum(node_filesystem_avail_bytes{namespace='default'}) / sum(node_filesystem_size_bytes{namespace='default'})",
-    "Evicted Pods": "rate(kube_pod_container_status_last_terminated_reason{reason='Evicted', namespace='default'}[150s])",
-    "OOM Killed Pods": "rate(kube_pod_container_status_last_terminated_reason{reason='OOMKilled', namespace='default'}[150s])",
-    "Number of Pods": "count(kube_pod_status_phase{phase='Running', namespace='default'})"
-}    
-def query_metric(metric_name, query, default_value=0):
-    """
-    Query a specific metric from the Flask server and return aggregated results as a Series.
-    
-    Args:
-        metric_name (str): Name of the metric.
-        query (str): PromQL query to execute.
-        default_value: Default value to use if the query result is None or empty.
-
-    Returns:
-        pd.Series: A Series with Metric as the index and Value as the data.
-    """
-
-    FLASK_SERVER_URL = "http://192.168.50.157:3050/query-prometheus"
-    try:
-        response = requests.get(FLASK_SERVER_URL, params={"query": query})
-        response.raise_for_status()  # Raise an HTTPError for bad responses
-        data = response.json()
-
-        # Aggregate values
-        aggregated_value = default_value
-        if data["status"] == "success" and "data" in data and "result" in data["data"] and data["data"]["result"]:
-            aggregated_value = sum(
-                float(item["value"][1]) if item["value"][1] is not None else default_value
-                for item in data["data"]["result"]
-            )
-        else:
-            print(f"No data found for metric: {metric_name}. Defaulting to {default_value}.")
-
-        # Return a Series
-        return pd.Series({"Metric": metric_name, "Value": aggregated_value})
-    except requests.exceptions.RequestException as e:
-        print(f"Error querying {metric_name}: {e}")
-        # Return a default Series on request error
-        return pd.Series({"Metric": metric_name, "Value": default_value})
-    
 def calculate_qoe(metrics, client_id, tend, media_loading_time):
     # Get Metrics Dataframe
-
-    #* Query each metric and store the aggregated value
-    metric_data = {metric: [] for metric in QUERIES.keys()}
-    for metric_name, query in QUERIES.items():
-        series = query_metric(metric_name, query, default_value=0)
-        metric_data[metric_name].append(series["Value"])
-
-    # Convert the dictionary to a DataFrame
-    metrics_df = pd.DataFrame(metric_data)
+    tend = tend
     buffer_df = pd.DataFrame(metrics['buffer'])
     if buffer_df.shape[0] <= 1:
         qoe_df = pd.DataFrame({
@@ -126,34 +66,25 @@ def calculate_qoe(metrics, client_id, tend, media_loading_time):
             'variation_rate': [None],
             'startup_delay': [None],
             'avg_stall_duration': [None],
-            'media_loading_duration': [media_loading_time * 1000],
-            'video_bitrate': [None],
             f'qoe_{client_id}': [0]
         })            
         qoe_df['cpu'] = n_cpu_cores
         qoe_df['user'] = num_clients
         qoe_df['watch_time'] = watch_time
         print(RED + "Streaming Failed" + RESET)
-        qoe_df = pd.concat([qoe_df, metrics_df], ignore_index=True, axis=1)        
         write_or_append_csv(file_path,qoe_df)
         return qoe_df
-    
-    # Get Bitrate
-    bitrate_df = pd.DataFrame(metrics["bitrate"])
-    prod_arr = bitrate_df['bitrate'].values * bitrate_df['time'].values    
-    video_bitrate = np.sum(prod_arr)/np.sum(bitrate_df['time'].values)
-    
-    # Get Video Resolution
+        
     level_df = pd.DataFrame(metrics['level'])
     level_to_bitrate_map = {2: 1125, 1: 438, 0: 281}
     level_df.loc[:,'levelBR'] = level_df['id'].map(lambda x : level_to_bitrate_map[x])    
    
     # Update Buffer and Level to Include the termination time
     last_row_buffer_df = buffer_df.iloc[-1].copy()
-    last_row_buffer_df['time'] = int(tend)
+    last_row_buffer_df['time'] = tend
     buffer_df = pd.concat([buffer_df, pd.DataFrame([last_row_buffer_df])], ignore_index=True)    
     last_row_level_df = level_df.iloc[-1].copy()
-    last_row_level_df['time'] = int(tend)
+    last_row_level_df['time'] = tend
     level_df = pd.concat([level_df, pd.DataFrame([last_row_level_df])], ignore_index=True)    
     #? Get Initial Startup Delay
     startup_delay = np.diff(buffer_df['time'].values[:2])[0]    
@@ -174,14 +105,17 @@ def calculate_qoe(metrics, client_id, tend, media_loading_time):
     buffer_df['time_diff'] = buffer_df['time'].diff()
     buffer_df.loc[0,'time_diff'] = 0
     stall_duration = buffer_df.loc[buffer_df['stall']==1, 'time_diff'].sum()
-    # buffer_df.to_csv("debug.csv")
     average_stall_duration = stall_duration/tend
     
     
     # TODO: Normalize using Standard Normalization, when collecting data, record it in a csv and then get the mean and variance
     qoe = video_resolution - video_variation_rate - startup_delay - stall_duration
     
-
+    # TODO: Decide on the weight
+    w_resolution = 0.2
+    w_variation = 0.15
+    w_startup_delay = 0.4
+    w_stalling = 0.25    
     # Store the results in a DataFrame for easy output
     qoe_df = pd.DataFrame({
         'client_id': [client_id],
@@ -190,17 +124,13 @@ def calculate_qoe(metrics, client_id, tend, media_loading_time):
         'startup_delay': [startup_delay],
         'avg_stall_duration': [average_stall_duration],
         'media_loading_duration': [media_loading_time * 1000],
-        'video_bitrate': [video_bitrate],
         f'qoe': [qoe]
     })    
-    
     
     # ? Record QoE Data
     qoe_df['cpu'] = n_cpu_cores
     qoe_df['user'] = num_clients
     qoe_df['watch_time'] = watch_time
-    qoe_df = pd.concat([qoe_df, metrics_df], ignore_index=True, axis=1)
-    
     print(GREEN + file_path + RESET)
     write_or_append_csv(file_path,qoe_df)
     return qoe_df
@@ -210,22 +140,15 @@ def emulate_client(client_id, results):
     """Simulate a client watching a stream and collecting metrics."""    
     time.sleep(initial_sleep_time)  # Simulate random user arrival
     # ? Initialize the ffmpeg    
-    print("Intializing Stream")
-    control_ffmpeg("initialize", f'test{client_id}')
-    # time.sleep(45) # Live Stream Lag Time
-    print("Stream Initialized")
     # Set up Chrome options
     chrome_options = Options()
     chrome_options.binary_location = '/usr/bin/chromium-browser'
-    chrome_options.binary_location = '/opt/chrome/chrome-linux64/chrome'
-    chrome_options.add_argument("--headless")  # Run in headless mode
+    # chrome_options.add_argument("--headless")  # Run in headless mode
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument(f"--remote-debugging-port={9222 + client_id}")  # Enable remote debugging
     # Initialize the Chrome WebDriver
-    # ! Go to https://googlechromelabs.github.io/chrome-for-testing/
-    # ! Then Unzip and remember it is contained in the folder chromedriver-linux64
     service = Service('/usr/local/bin/chromedriver')
     driver = webdriver.Chrome(service=service, options=chrome_options)
     # Open the streaming URL
@@ -236,57 +159,38 @@ def emulate_client(client_id, results):
     # Start the timer to measure media loading time
     start_time = time.time()
 
+    # Loop to check if the stream has started (based on buffer availability)
     while True:
         # Retrieve metrics from the JavaScript function
-        tempMetrics = driver.execute_script("return getMetrics()")
+        tempMetrics = driver.execute_script("return getMetrics();")
+        # Wait a little before the next check
         time.sleep(0.5)
-
-        # Check if the buffer has loaded (indicating stream start)
+        
+        # Check if the buffer has loaded (indicating the stream has started)
         if len(tempMetrics["video"]) > 2:
             media_loading_time = time.time() - start_time
-            print(GREEN + f"Buffer loaded, Media Load Time: {media_loading_time} seconds." + RESET)
+            remaining_time -= media_loading_time
             
-            # Wait a bit and check buffer/play status
-            time.sleep(2)
-            remaining_time -= media_loading_time + 2
-            tempMetrics = driver.execute_script("return getMetrics()")
-            
-            # Handle buffer loading but playback issues
-            new_start_time = time.time()
-            while len(tempMetrics["buffer"]) <= 2:
-                if len(tempMetrics["buffer"]) > 0:
-                    print("Buffer loaded but not playing, attempting to start playback.")
-                    button.click()  # Retry playback
-
-                # Break if remaining time runs out
-                if time.time() - new_start_time > remaining_time:
-                    break
-                
-                time.sleep(1)
-                tempMetrics = driver.execute_script("return getMetrics()")
-            
-            # Calculate buffer error time and adjust remaining play time
-            buffer_error_time = max(0, time.time() - new_start_time)
-            remaining_time = max(0, remaining_time - buffer_error_time)
-            media_loading_time += buffer_error_time
-            print(f"Playing after buffer error delay of {buffer_error_time} seconds.")
+            print(GREEN + f"Buffer is not empty, Media Load Time {media_loading_time} seconds." + RESET)
             break
-
-        # Reapply config or refresh to initiate streaming
+        print(RED + "Streaming Not Initialized, Refreshing..." + RESET)
+        
+        # Click the button to reapply configuration or refresh the player
         button.click()
+        
+        # Sleep a little before checking again
         time.sleep(1)
-
-        # Timeout condition
+        
+        # If the total remaining time exceeds the timeout, stop the process
         if time.time() - start_time > remaining_time:
             print("Timeout reached, stopping checks.")
             remaining_time = 0
             media_loading_time = time.time() - start_time
             break
-        
-    
+
     # Proceed with streaming for the remaining time
     time.sleep(remaining_time)
-    
+
 
         
     # Retrieve metrics from the browser
@@ -298,7 +202,6 @@ def emulate_client(client_id, results):
     _ = calculate_qoe(metrics, client_id, tend, media_loading_time)
     
     # Terminate the Stream
-    control_ffmpeg("terminate", f'test{client_id}')
     driver.quit()
             
 def main():
@@ -330,7 +233,7 @@ def main():
     
     try:
         # while loop_flag:
-            client_ids = random.sample(range(1000), num_clients)
+            client_ids = [0]
             for i in client_ids:
                 thread = threading.Thread(target=emulate_client, args=(i, {}))
                 threads.append(thread)
@@ -343,7 +246,6 @@ def main():
         stop_flag = True  # Set the stop flag to signal threads to stop
         for i in client_ids:
             print(f"Terminating Stream for client {i}")
-            control_ffmpeg("terminate", 'test' + str(i))
         
         for thread in threads:
             thread.join()  # Ensure all threads have finished
