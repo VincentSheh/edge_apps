@@ -19,6 +19,7 @@ RED = "\033[91m"  # Bright red
 
 
 num_clients = 3
+tot_clients = 3
 n_cpu_cores = 3000
 file_path = 'k8s_qoe_atk_ids.csv'
 # initial_sleep_time = np.random.uniform(1,2)
@@ -131,7 +132,7 @@ def calculate_qoe(metrics, client_id, tend, media_loading_time):
             f'qoe_{client_id}': [0]
         })            
         qoe_df['cpu'] = n_cpu_cores
-        qoe_df['user'] = num_clients
+        qoe_df['user'] = tot_clients
         qoe_df['watch_time'] = watch_time
         print(RED + "Streaming Failed" + RESET)
         qoe_df = pd.concat([qoe_df, metrics_df], ignore_index=True, axis=1)        
@@ -197,7 +198,7 @@ def calculate_qoe(metrics, client_id, tend, media_loading_time):
     
     # ? Record QoE Data
     qoe_df['cpu'] = n_cpu_cores
-    qoe_df['user'] = num_clients
+    qoe_df['user'] = tot_clients
     qoe_df['watch_time'] = watch_time
     qoe_df = pd.concat([qoe_df, metrics_df], ignore_index=True, axis=1)
     
@@ -222,7 +223,7 @@ def emulate_client(client_id, results):
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument(f"--remote-debugging-port={9222 + client_id}")  # Enable remote debugging
+    # chrome_options.add_argument(f"--remote-debugging-port={9222 + client_id}")  # Enable remote debugging
     # Initialize the Chrome WebDriver
     # ! Go to https://googlechromelabs.github.io/chrome-for-testing/
     # ! Then Unzip and remember it is contained in the folder chromedriver-linux64
@@ -311,6 +312,7 @@ def main():
     parser.add_argument('-f', '--file_path', type=str, help="Save the QoE data to a selected file")
     parser.add_argument('-w', '--watch_time', type=int, help="Watch Duration", default=60)
     parser.add_argument('-l', '--loop_flag', type=bool, help="Whether to Loop", default=True)
+    parser.add_argument('-m', '--tot_clients', type=bool, help="Total Number of Clients across devices", default=True)
     
     args = parser.parse_args()
 
@@ -325,6 +327,8 @@ def main():
         watch_time = args.watch_time  
     if args.loop_flag is not None:
         loop_flag = args.loop_flag  
+    if args.loop_flag is not None:
+        tot_clients = args.loop_flag  
 
     threads = []
     

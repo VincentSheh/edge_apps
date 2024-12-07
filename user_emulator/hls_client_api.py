@@ -21,6 +21,7 @@ def start_client():
     file_to_write = data.get("f", "ingress__qoe_noatk_ingDeny.csv")  # Default file name
     duration = data.get("w", 90)    # Default to 90 seconds if not provided
     loop_flag = data.get("loop_flag", True)  # Default to True if not provided
+    total_clients = data.get("tot_c", num_clients)
 
     # Define the command to run, adding the loop flag
     command = [
@@ -29,7 +30,8 @@ def start_client():
         "-c", str(cpu), 
         "-f", file_to_write, 
         "-w", str(duration),
-        "-l", str(loop_flag).lower()  # Convert boolean to lowercase string for command line
+        "-l", str(loop_flag).lower(),  # Convert boolean to lowercase string for command line
+        "-m", str(total_clients)
     ]
     
     try:
