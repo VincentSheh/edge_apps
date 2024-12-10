@@ -122,7 +122,7 @@ def calculate_qoe(metrics, client_id, tend, media_loading_time):
     buffer_df = pd.DataFrame(metrics['buffer'])
     if buffer_df.shape[0] <= 1:
         qoe_df = pd.DataFrame({
-            'client_id': [client_id],
+            'client_id': [uuid],
             'video_resolution': [None],
             'variation_rate': [None],
             'startup_delay': [None],
@@ -185,7 +185,7 @@ def calculate_qoe(metrics, client_id, tend, media_loading_time):
 
     # Store the results in a DataFrame for easy output
     qoe_df = pd.DataFrame({
-        'client_id': [client_id],
+        'client_id': [uuid],
         'video_resolution': [video_resolution],
         'variation_rate': [video_variation_rate],
         'startup_delay': [startup_delay],
@@ -223,7 +223,8 @@ def emulate_client(client_id, results):
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    # chrome_options.add_argument(f"--remote-debugging-port={9222 + client_id}")  # Enable remote debugging
+    # chrome_options.add_argument( "--remote-debugging-pipe" )
+    chrome_options.add_argument(f"--remote-debugging-port={9222 + client_id}")  # Enable remote debugging
     # Initialize the Chrome WebDriver
     # ! Go to https://googlechromelabs.github.io/chrome-for-testing/
     # ! Then Unzip and remember it is contained in the folder chromedriver-linux64
@@ -304,7 +305,7 @@ def emulate_client(client_id, results):
             
 def main():
     """Main function to parse arguments and start client simulations."""
-    global num_clients, n_cpu_cores, file_path, watch_time
+    global num_clients, n_cpu_cores, file_path, watch_time, tot_clients, uuid
     
     parser = argparse.ArgumentParser(description='Set the configurations')
     parser.add_argument('-n', '--num_clients', type=int, help="Number of clients to stream")
@@ -312,7 +313,8 @@ def main():
     parser.add_argument('-f', '--file_path', type=str, help="Save the QoE data to a selected file")
     parser.add_argument('-w', '--watch_time', type=int, help="Watch Duration", default=60)
     parser.add_argument('-l', '--loop_flag', type=bool, help="Whether to Loop", default=True)
-    parser.add_argument('-m', '--tot_clients', type=bool, help="Total Number of Clients across devices", default=True)
+    parser.add_argument('-m', '--tot_clients', type=int, help="Total Number of Clients across devices", default=0)
+    parser.add_argument('-u', '--uuid', type=int, help="ID of the session", default=0)
     
     args = parser.parse_args()
 
@@ -325,10 +327,13 @@ def main():
         file_path = args.file_path
     if args.watch_time is not None:
         watch_time = args.watch_time  
+    if args.tot_clients is not None:
+        tot_clients = args.tot_clients          
+    if args.uuid is not None:
+        uuid = args.uuid  
     if args.loop_flag is not None:
         loop_flag = args.loop_flag  
-    if args.loop_flag is not None:
-        tot_clients = args.loop_flag  
+
 
     threads = []
     

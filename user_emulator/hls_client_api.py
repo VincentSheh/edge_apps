@@ -22,6 +22,7 @@ def start_client():
     duration = data.get("w", 90)    # Default to 90 seconds if not provided
     loop_flag = data.get("loop_flag", True)  # Default to True if not provided
     total_clients = data.get("tot_c", num_clients)
+    id = data.get("u", 0)
 
     # Define the command to run, adding the loop flag
     command = [
@@ -31,7 +32,8 @@ def start_client():
         "-f", file_to_write, 
         "-w", str(duration),
         "-l", str(loop_flag).lower(),  # Convert boolean to lowercase string for command line
-        "-m", str(total_clients)
+        "-m", str(total_clients),
+        "-u", str(id),
     ]
     
     try:
