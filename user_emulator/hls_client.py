@@ -58,12 +58,12 @@ def write_or_append_csv(path, df):
     return df  
 
 QUERIES = {
-    "CPU Usage": "sum(rate(container_cpu_usage_seconds_total{namespace='default'}[150s])) by (pod)",
+    # "CPU Usage": "sum(rate(container_cpu_usage_seconds_total{namespace='default'}[150s])) by (pod)",
     "CPU Limit": "sum(kube_pod_container_resource_limits{resource='cpu', namespace='default'}) by (pod)",
-    "Memory Usage": "sum(rate(container_memory_usage_bytes{namespace='default', container!=''}[150s])) by (pod)",
+    # "Memory Usage": "sum(rate(container_memory_usage_bytes{namespace='default', container!=''}[150s])) by (pod)",
     "Memory Limit": "sum(kube_pod_container_resource_limits{resource='memory', namespace='default'}) by (pod)",
-    "NW Throughput Transmit": "sum(rate(container_network_transmit_bytes_total{namespace='default'}[150s]))",
-    "NW Throughput Receive": "sum(rate(container_network_receive_bytes_total{namespace='default'}[150s]))",
+    # "NW Throughput Transmit": "sum(rate(container_network_transmit_bytes_total{namespace='default'}[150s]))",
+    # "NW Throughput Receive": "sum(rate(container_network_receive_bytes_total{namespace='default'}[150s]))",
     "Packet Drops": "sum(rate(container_network_receive_packets_dropped_total{namespace='default'}[150s]))",
     # "Disk I/O Read": "sum(rate(node_disk_read_bytes_total{node='worker3'}[150s]))",
     # "Disk I/O Write": "sum(rate(node_disk_written_bytes_total{node='worker3'}[150s]))",
@@ -72,6 +72,13 @@ QUERIES = {
     "OOM Killed Pods": "rate(kube_pod_container_status_last_terminated_reason{reason='OOMKilled', namespace='default'}[150s])",
     "Number of Pods": "count(kube_pod_status_phase{phase='Running', namespace='default'})"
 }    
+RANGE_QUERIES = {
+    "CPU Usage": "sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{cluster='', namespace='default'}) by (pod) / sum(cluster:namespace:pod_cpu:active:kube_pod_container_resource_requests{cluster='', namespace='default'}) by (pod)",
+    "Memory Usage":"sum(container_memory_working_set_bytes{job='kubelet', metrics_path='/metrics/cadvisor', cluster='', namespace='default', container!='', image!=''}) / sum(kube_pod_container_resource_requests{job='kube-state-metrics', cluster='', namespace='default', resource='memory'})",
+    "NW Throughput Receive": "sum(irate(container_network_receive_bytes_total{job='kubelet', metrics_path='/metrics/cadvisor', cluster='', namespace='default'}[1m15s])) by (pod)",
+    "NW Throughput Transmit": "sum(irate(container_network_transmit_bytes_total{job='kubelet', metrics_path='/metrics/cadvisor', cluster='', namespace='default'}[1m15s])) by (pod)",
+    "CPU Throttled": "sum(rate(container_cpu_cfs_throttled_seconds_total{namespace='default'}[150s]))",
+}
 def query_metric(metric_name, query, default_value=0):
     """
     Query a specific metric from the Flask server and return aggregated results as a Series.
@@ -108,12 +115,59 @@ def query_metric(metric_name, query, default_value=0):
         # Return a default Series on request error
         return pd.Series({"Metric": metric_name, "Value": default_value})
     
+def query_range_metric(metric_name, query):
+    FLASK_SERVER_URL = "http://192.168.50.157:3050/query-prometheus-range"
+    
+    try:
+        # Prepare parameters for the query
+        params = {
+            "query": query
+        }
+        
+        # Send the request to the Prometheus query_range endpoint
+        response = requests.get(FLASK_SERVER_URL, params=params)
+        response.raise_for_status()  # Raise an exception for any HTTP error
+        data = response.json()
+        
+        # Extract time-series data from Prometheus response
+        if data["status"] == "success" and "data" in data and "result" in data["data"] and data["data"]["result"]:
+            time_series = []
+            for result in data["data"]["result"]:
+                pod_name = result['metric'].get('pod', 'unknown_pod')
+                for timestamp, value in result['values']:
+                    time_series.append({"pod": pod_name, "timestamp": float(timestamp), "value": float(value)})
+                    
+            # Create DataFrame
+            df = pd.DataFrame(time_series)
+            
+            # Check if the DataFrame is empty
+            if df.empty or 'value' not in df:
+                print(f"No data found for metric: {metric_name}. Returning default value 0.")
+                aggregated_value = 0
+            else:
+                # Calculate the average of the 'value' column
+                aggregated_value = df['value'].mean()
+                
+            # Return the aggregated value as a Series
+            return pd.Series({"Metric": metric_name, "Value": aggregated_value})
+        else:
+            print(f"No data found for metric: {metric_name}. Returning default value 0.")
+            return pd.Series({"Metric": metric_name, "Value": 0})
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Error querying range metric {metric_name}: {e}")
+        return pd.Series({"Metric": metric_name, "Value": 0})
+    
+    
 def calculate_qoe(metrics, client_id, tend, media_loading_time):
     # Get Metrics Dataframe
 
     #* Query each metric and store the aggregated value
-    metric_data = {metric: [] for metric in QUERIES.keys()}
+    metric_data = {metric: [] for metric in ["CPU Usage","CPU Throttled", "CPU Limit", "Memory Usage", "Memory Limit", "NW Throughput Transmit", "NW Throughput Receive", "Packet Drops", "Evicted Pods", "OOM Killed Pods", "Number of Pods"]}
     for metric_name, query in QUERIES.items():
+        series = query_metric(metric_name, query, default_value=0)
+        metric_data[metric_name].append(series["Value"])
+    for metric_name, query in RANGE_QUERIES.items():
         series = query_metric(metric_name, query, default_value=0)
         metric_data[metric_name].append(series["Value"])
 
@@ -314,7 +368,7 @@ def main():
     parser.add_argument('-w', '--watch_time', type=int, help="Watch Duration", default=60)
     parser.add_argument('-l', '--loop_flag', type=bool, help="Whether to Loop", default=True)
     parser.add_argument('-m', '--tot_clients', type=int, help="Total Number of Clients across devices", default=0)
-    parser.add_argument('-u', '--uuid', type=int, help="ID of the session", default=0)
+    parser.add_argument('-u', '--uuid', type=str, help="ID of the session", default=0)
     
     args = parser.parse_args()
 
